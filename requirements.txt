@@ -3,3 +3,4 @@ fastapi
 sse-starlette
 mangum
 numpy
+diskcache
