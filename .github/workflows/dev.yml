@@ -1,0 +1,29 @@
+name: Deploy Dev
+on:
+  workflow_dispatch:
+    branches:
+      - main
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          submodules: "true"
+      - name: Setup NodeJS 18
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - name: Install Serverless Framework
+        run: npm install -g serverless
+      - name: Serverless AWS authentication
+        run: sls config credentials --provider aws --key ${{ secrets.AWS_KEY }} --secret ${{ secrets.AWS_SECRET }}
+      - name: Deploy Lambda functions
+        run: sls deploy
+      - name: Export Endpoint URL
+        run: echo $(sls info --verbose | grep endpoint | sed s/endpoint\:\ //g | awk '{print $1}') > endpoint
+      - name: Echo Endpoint URL
+        run: echo $(cat endpoint)
+      - name: Test Lambda functions
+        run: "curl -X POST -H 'Content-Type: application/json' -d @prompt.json $(cat endpoint)v1/completions"

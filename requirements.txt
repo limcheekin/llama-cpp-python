@@ -1,0 +1,5 @@
+typing_extensions
+fastapi
+sse-starlette
+mangum
+numpy
