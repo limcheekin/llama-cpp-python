@@ -141,7 +141,9 @@ class LlamaDiskCache(BaseLlamaCache):
         if _key is None:
             raise KeyError("Key not found")
         value: "LlamaState" = self.cache.pop(_key)  # type: ignore
-        self.cache.push(_key, side="front")  # type: ignore
+        # NOTE: This puts an integer as key in cache, which breaks, 
+        # Llama.longest_token_prefix(k, key) above since k is not a tuple of ints/tokens
+        # self.cache.push(_key, side="front")  # type: ignore
         return value
 
     def __contains__(self, key: Sequence[int]) -> bool:
@@ -168,7 +170,7 @@ class LlamaState:
         eval_logits: Deque[List[float]],
         input_ids: npt.NDArray[np.intc],
         scores: npt.NDArray[np.single],
-        llama_state,  # type: llama_cpp.Array[llama_cpp.c_uint8]
+        llama_state: bytes,
         llama_state_size: int,
     ):
         self.eval_tokens = eval_tokens
@@ -282,15 +284,18 @@ class Llama:
         if not os.path.exists(model_path):
             raise ValueError(f"Model path does not exist: {model_path}")
 
-        self.ctx = llama_cpp.llama_init_from_file(
+        self.model = llama_cpp.llama_load_model_from_file(
             self.model_path.encode("utf-8"), self.params
         )
+        assert self.model is not None
+
+        self.ctx = llama_cpp.llama_new_context_with_model(self.model, self.params)
 
         assert self.ctx is not None
 
         if self.lora_path:
-            if llama_cpp.llama_apply_lora_from_file(
-                self.ctx,
+            if llama_cpp.llama_model_apply_lora_from_file(
+                self.model,
                 llama_cpp.c_char_p(self.lora_path.encode("utf-8")),
                 llama_cpp.c_char_p(self.lora_base.encode("utf-8"))
                 if self.lora_base is not None
@@ -325,7 +330,7 @@ class Llama:
         self._token_eos = Llama.token_eos()
 
         self._input_ids = np.array([], dtype=np.intc)
-        self._scores = np.ndarray((0, self._n_vocab), dtype=np.single)
+        self._scores: npt.NDArray[np.single] = np.ndarray((0, self._n_vocab), dtype=np.single)
 
     def tokenize(self, text: bytes, add_bos: bool = True) -> List[int]:
         """Tokenize a string.
@@ -405,6 +410,7 @@ class Llama:
         """
         assert self.ctx is not None
         n_ctx = self._n_ctx
+        scores: List[npt.NDArray[np.single]] = []
         for i in range(0, len(tokens), self.n_batch):
             batch = tokens[i : min(len(tokens), i + self.n_batch)]
             n_past = min(n_ctx - len(batch), len(self._input_ids))
@@ -430,9 +436,8 @@ class Llama:
             logits_view = llama_cpp.llama_get_logits(self.ctx)
             logits = [logits_view[i * cols : (i + 1) * cols] for i in range(rows)]
             self.eval_logits.extend(logits)
-            self._scores: npt.NDArray[np.single] = np.concatenate(
-                (self._scores, np.array(logits, dtype=np.single)), axis=0
-            )
+            scores.append(np.array(logits, dtype=np.single))
+        self._scores = np.concatenate(scores)
 
     def _sample(
         self,
@@ -1509,7 +1514,7 @@ class Llama:
             eval_logits=self.eval_logits.copy(),
             scores=self._scores.copy(),
             input_ids=self._input_ids.copy(),
-            llama_state=llama_state_compact,
+            llama_state=bytes(llama_state_compact),
             llama_state_size=n_bytes,
         )
 
@@ -1520,7 +1525,10 @@ class Llama:
         self._scores = state.scores.copy()
         self._input_ids = state.input_ids.copy()
         state_size = state.llama_state_size
-        if llama_cpp.llama_set_state_data(self.ctx, state.llama_state) != state_size:
+        LLamaStateArrayType = (llama_cpp.c_uint8 * state_size)
+        llama_state = LLamaStateArrayType.from_buffer_copy(state.llama_state)
+
+        if llama_cpp.llama_set_state_data(self.ctx, llama_state) != state_size:
             raise RuntimeError("Failed to set llama state data")
 
     def n_ctx(self) -> int:
