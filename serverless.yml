@@ -26,7 +26,7 @@ functions:
   chat:
     image:
       name: appimage
-    memorySize: 3072
+    memorySize: 10240
     environment:
       MODEL: ./model/ggml-q4_0.bin
     timeout:

@@ -1,8 +1,9 @@
 """AWS Lambda function for llama.cpp.
 """
 from mangum import Mangum
-from llama_cpp.server.app import create_app
+from llama_cpp.server.app import create_app, Settings
+import os
 
-handler = Mangum(create_app())
-
-
+print("os.cpu_count()", os.cpu_count())
+handler = Mangum(create_app(
+    Settings(n_threads=os.cpu_count(), embedding=False)))
