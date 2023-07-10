@@ -4,3 +4,4 @@ sse-starlette
 mangum
 numpy
 diskcache
+pydantic_settings
