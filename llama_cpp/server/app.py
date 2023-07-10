@@ -12,7 +12,8 @@ from anyio.streams.memory import MemoryObjectSendStream
 from starlette.concurrency import run_in_threadpool, iterate_in_threadpool
 from fastapi import Depends, FastAPI, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, BaseSettings, Field, create_model_from_typeddict
+from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings
 from sse_starlette.sse import EventSourceResponse
 
 
@@ -85,6 +86,10 @@ class Settings(BaseSettings):
     port: int = Field(
         default=8000, description="Listen port"
     )
+    interrupt_requests: bool = Field(
+        default=True,
+        description="Whether to interrupt requests when a new request is received.",
+    )
 
 
 router = APIRouter()
@@ -146,12 +151,27 @@ def create_app(settings: Optional[Settings] = None):
     return app
 
 
-llama_lock = Lock()
+llama_outer_lock = Lock()
+llama_inner_lock = Lock()
 
 
 def get_llama():
-    with llama_lock:
-        yield llama
+    # NOTE: This double lock allows the currently streaming llama model to
+    # check if any other requests are pending in the same thread and cancel
+    # the stream if so.
+    llama_outer_lock.acquire()
+    release_outer_lock = True
+    try:
+        llama_inner_lock.acquire()
+        try:
+            llama_outer_lock.release()
+            release_outer_lock = False
+            yield llama
+        finally:
+            llama_inner_lock.release()
+    finally:
+        if release_outer_lock:
+            llama_outer_lock.release()
 
 
 def get_settings():
@@ -290,7 +310,6 @@ class CreateCompletionRequest(BaseModel):
         }
 
 
-CreateCompletionResponse = create_model_from_typeddict(llama_cpp.Completion)
 
 
 def make_logit_bias_processor(
@@ -328,7 +347,6 @@ def make_logit_bias_processor(
 
 @router.post(
     "/v1/completions",
-    response_model=CreateCompletionResponse,
 )
 async def create_completion(
     request: Request,
@@ -364,6 +382,9 @@ async def create_completion(
                         await inner_send_chan.send(dict(data=json.dumps(chunk)))
                         if await request.is_disconnected():
                             raise anyio.get_cancelled_exc_class()()
+                        if settings.interrupt_requests and llama_outer_lock.locked():
+                            await inner_send_chan.send(dict(data="[DONE]"))
+                            raise anyio.get_cancelled_exc_class()()
                     await inner_send_chan.send(dict(data="[DONE]"))
                 except anyio.get_cancelled_exc_class() as e:
                     print("disconnected")
@@ -371,7 +392,6 @@ async def create_completion(
                         print(
                             f"Disconnected from client (via refresh/close) {request.client}"
                         )
-                        await inner_send_chan.send(dict(closing=True))
                         raise e
 
         return EventSourceResponse(
@@ -395,12 +415,10 @@ class CreateEmbeddingRequest(BaseModel):
         }
 
 
-CreateEmbeddingResponse = create_model_from_typeddict(llama_cpp.Embedding)
 
 
 @router.post(
     "/v1/embeddings",
-    response_model=CreateEmbeddingResponse,
 )
 async def create_embedding(
     request: CreateEmbeddingRequest, llama: llama_cpp.Llama = Depends(get_llama)
@@ -458,18 +476,17 @@ class CreateChatCompletionRequest(BaseModel):
         }
 
 
-CreateChatCompletionResponse = create_model_from_typeddict(llama_cpp.ChatCompletion)
 
 
 @router.post(
     "/v1/chat/completions",
-    response_model=CreateChatCompletionResponse,
 )
 async def create_chat_completion(
     request: Request,
     body: CreateChatCompletionRequest,
     llama: llama_cpp.Llama = Depends(get_llama),
-) -> Union[llama_cpp.ChatCompletion, EventSourceResponse]:
+    settings: Settings = Depends(get_settings),
+) -> Union[llama_cpp.ChatCompletion]: # type: ignore
     exclude = {
         "n",
         "logit_bias",
@@ -494,6 +511,9 @@ async def create_chat_completion(
                         await inner_send_chan.send(dict(data=json.dumps(chat_chunk)))
                         if await request.is_disconnected():
                             raise anyio.get_cancelled_exc_class()()
+                        if settings.interrupt_requests and llama_outer_lock.locked():
+                            await inner_send_chan.send(dict(data="[DONE]"))
+                            raise anyio.get_cancelled_exc_class()()
                     await inner_send_chan.send(dict(data="[DONE]"))
                 except anyio.get_cancelled_exc_class() as e:
                     print("disconnected")
@@ -501,7 +521,6 @@ async def create_chat_completion(
                         print(
                             f"Disconnected from client (via refresh/close) {request.client}"
                         )
-                        await inner_send_chan.send(dict(closing=True))
                         raise e
 
         return EventSourceResponse(
@@ -527,14 +546,13 @@ class ModelList(TypedDict):
     data: List[ModelData]
 
 
-GetModelResponse = create_model_from_typeddict(ModelList)
 
 
-@router.get("/v1/models", response_model=GetModelResponse)
+@router.get("/v1/models")
 async def get_models(
     settings: Settings = Depends(get_settings),
-    llama: llama_cpp.Llama = Depends(get_llama),
 ) -> ModelList:
+    assert llama is not None
     return {
         "object": "list",
         "data": [

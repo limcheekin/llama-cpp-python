@@ -33,6 +33,15 @@ deploy.gh-docs:
 	mkdocs build
 	mkdocs gh-deploy
 
+test:
+	python3 -m pytest
+
+docker:
+	docker build -t llama-cpp-python:latest -f docker/simple/Dockerfile .
+
+run-server:
+	uvicorn --factory llama.server:app --host ${HOST} --port ${PORT}
+
 clean:
 	- cd vendor/llama.cpp && make clean
 	- cd vendor/llama.cpp && rm libllama.so
@@ -53,4 +62,5 @@ clean:
 	build.sdist \
 	deploy.pypi \
 	deploy.gh-docs \
+	docker \
 	clean

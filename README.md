@@ -71,7 +71,7 @@ To install with Metal (MPS), set the `LLAMA_METAL=on` environment variable befor
 CMAKE_ARGS="-DLLAMA_METAL=on" FORCE_CMAKE=1 pip install llama-cpp-python
 ```
 
-Detailed MacOS Metal GPU install documentation is available at [docs/macos_install.md](docs/macos_install.md)
+Detailed MacOS Metal GPU install documentation is available at [docs/install/macos.md](docs/install/macos.md)
 
 ## High-level API
 
@@ -103,6 +103,15 @@ Below is a short example demonstrating how to use the high-level API to generate
     "total_tokens": 42
   }
 }
+```
+
+### Adjusting the Context Window
+The context window of the Llama models determines the maximum number of tokens that can be processed at once. By default, this is set to 512 tokens, but can be adjusted based on your requirements.
+
+For instance, if you want to work with larger contexts, you can expand the context window by setting the n_ctx parameter when initializing the Llama object:
+
+```python
+llm = Llama(model_path="./models/7B/ggml-model.bin", n_ctx=2048)
 ```
 
 ## Web Server
@@ -163,6 +172,7 @@ To get started, clone the repository and install the package in development mode
 
 ```bash
 git clone --recurse-submodules git@github.com:abetlen/llama-cpp-python.git
+cd llama-cpp-python
 
 # Install with pip
 pip install -e .
