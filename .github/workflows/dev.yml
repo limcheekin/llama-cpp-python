@@ -2,7 +2,7 @@ name: Deploy Dev
 on:
   workflow_dispatch:
     branches:
-      - main
+      - llama-2-7b-chat
 jobs:
   deploy-dev:
     runs-on: ubuntu-latest

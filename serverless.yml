@@ -1,4 +1,4 @@
-service: llama-cpp
+service: llama-2
 
 frameworkVersion: "3"
 
