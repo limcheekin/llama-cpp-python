@@ -47,10 +47,10 @@ Otherwise, while installing it will build the llama.ccp x86 version which will b
 `llama.cpp` supports multiple BLAS backends for faster processing.
 Use the `FORCE_CMAKE=1` environment variable to force the use of `cmake` and install the pip package for the desired BLAS backend.
 
-To install with OpenBLAS, set the `LLAMA_OPENBLAS=1` environment variable before installing:
+To install with OpenBLAS, set the `LLAMA_BLAS and LLAMA_BLAS_VENDOR` environment variables before installing:
 
 ```bash
-CMAKE_ARGS="-DLLAMA_OPENBLAS=on" FORCE_CMAKE=1 pip install llama-cpp-python
+CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=OpenBLAS" FORCE_CMAKE=1 pip install llama-cpp-python
 ```
 
 To install with cuBLAS, set the `LLAMA_CUBLAS=1` environment variable before installing:
@@ -70,6 +70,27 @@ To install with Metal (MPS), set the `LLAMA_METAL=on` environment variable befor
 ```bash
 CMAKE_ARGS="-DLLAMA_METAL=on" FORCE_CMAKE=1 pip install llama-cpp-python
 ```
+
+#### Windows remarks
+
+To set the variables `CMAKE_ARGS` and `FORCE_CMAKE` in PowerShell, follow the next steps (Example using, OpenBLAS):
+
+```ps
+$env:CMAKE_ARGS = "-DLLAMA_OPENBLAS=on"
+```
+
+```ps
+$env:FORCE_CMAKE = 1
+```
+
+Then, call `pip` after setting the variables:
+```
+pip install llama-cpp-python
+```
+
+See the above instructions and set `CMAKE_ARGS` to the BLAS backend you want to use.
+
+#### MacOS remarks
 
 Detailed MacOS Metal GPU install documentation is available at [docs/install/macos.md](docs/install/macos.md)
 
@@ -114,6 +135,14 @@ For instance, if you want to work with larger contexts, you can expand the conte
 llm = Llama(model_path="./models/7B/ggml-model.bin", n_ctx=2048)
 ```
 
+### Loading llama-2 70b
+
+Llama2 70b must set the `n_gqa` parameter (grouped-query attention factor) to 8 when loading:
+
+```python
+llm = Llama(model_path="./models/70B/ggml-model.bin", n_gqa=8)
+```
+
 ## Web Server
 
 `llama-cpp-python` offers a web server which aims to act as a drop-in replacement for the OpenAI API.
@@ -135,6 +164,7 @@ A Docker image is available on [GHCR](https://ghcr.io/abetlen/llama-cpp-python).
 ```bash
 docker run --rm -it -p 8000:8000 -v /path/to/models:/models -e MODEL=/models/ggml-model-name.bin ghcr.io/abetlen/llama-cpp-python:latest
 ```
+[Docker on termux (requires root)](https://gist.github.com/FreddieOliveira/efe850df7ff3951cb62d74bd770dce27) is currently the only known way to run this on phones, see [termux support issue](https://github.com/abetlen/llama-cpp-python/issues/389) 
 
 ## Low-level API
 

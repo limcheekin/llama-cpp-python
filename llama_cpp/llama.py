@@ -19,13 +19,13 @@ from typing import (
 from collections import deque, OrderedDict
 
 import diskcache
+import ctypes
 
 from . import llama_cpp
 from .llama_types import *
 
 import numpy as np
 import numpy.typing as npt
-
 
 class BaseLlamaCache(ABC):
     """Base cache class for a llama.cpp model."""
@@ -220,6 +220,11 @@ class Llama:
         lora_base: Optional[str] = None,
         lora_path: Optional[str] = None,
         low_vram: bool = False,
+        tensor_split: Optional[List[float]] = None,
+        rope_freq_base: float = 10000.0,
+        rope_freq_scale: float = 1.0,
+        n_gqa: Optional[int] = None,  # (TEMPORARY) must be 8 for llama2 70b
+        rms_norm_eps: Optional[float] = None, # (TEMPORARY)
         verbose: bool = True,
     ):
         """Load a llama.cpp model from `model_path`.
@@ -240,6 +245,9 @@ class Llama:
             last_n_tokens_size: Maximum number of tokens to keep in the last_n_tokens deque.
             lora_base: Optional path to base model, useful if using a quantized base model and you want to apply LoRA to an f16 model.
             lora_path: Path to a LoRA file to apply to the model.
+            tensor_split: List of floats to split the model across multiple GPUs. If None, the model is not split.
+            rope_freq_base: Base frequency for rope sampling.
+            rope_freq_scale: Scale factor for rope sampling.
             verbose: Print verbose output to stderr.
 
         Raises:
@@ -248,6 +256,7 @@ class Llama:
         Returns:
             A Llama instance.
         """
+
         self.verbose = verbose
         self.model_path = model_path
 
@@ -262,6 +271,23 @@ class Llama:
         self.params.use_mlock = use_mlock
         self.params.embedding = embedding
         self.params.low_vram = low_vram
+
+        self.tensor_split = tensor_split
+        self._p_tensor_split = None
+
+        if self.tensor_split is not None:
+            FloatArray = (ctypes.c_float * len(self.tensor_split))(*self.tensor_split)
+            self._p_tensor_split = ctypes.POINTER(ctypes.c_float)(FloatArray) # keep a reference to the array so it is not gc'd
+            self.params.tensor_split = self._p_tensor_split
+
+        self.params.rope_freq_base = rope_freq_base
+        self.params.rope_freq_scale = rope_freq_scale
+
+        if n_gqa is not None:
+            self.params.n_gqa = n_gqa
+
+        if rms_norm_eps is not None:
+            self.params.rms_norm_eps = rms_norm_eps
 
         self.last_n_tokens_size = last_n_tokens_size
         self.n_batch = min(n_ctx, n_batch)
@@ -826,7 +852,7 @@ class Llama:
 
         if len(prompt_tokens) >= llama_cpp.llama_n_ctx(self.ctx):
             raise ValueError(
-                f"Requested tokens exceed context window of {llama_cpp.llama_n_ctx(self.ctx)}"
+                f"Requested tokens ({len(prompt_tokens)}) exceed context window of {llama_cpp.llama_n_ctx(self.ctx)}"
             )
 
         if max_tokens <= 0:
@@ -934,7 +960,7 @@ class Llama:
                     token_end_position += len(self.detokenize([token]))
                     # Check if stop sequence is in the token
                     if token_end_position >= (
-                        remaining_length - first_stop_position - 1
+                        remaining_length - first_stop_position
                     ):
                         break
                     logprobs_or_none: Optional[CompletionLogprobs] = None
@@ -1503,6 +1529,11 @@ class Llama:
             n_threads=self.n_threads,
             lora_base=self.lora_base,
             lora_path=self.lora_path,
+            tensor_split=self.tensor_split,
+            ### TEMPORARY ###
+            n_gqa=self.params.n_gqa,
+            rms_norm_eps=self.params.rms_norm_eps,
+            ### TEMPORARY ###
             ### DEPRECATED ###
             n_parts=self.n_parts,
             ### DEPRECATED ###
@@ -1512,7 +1543,6 @@ class Llama:
         self.__init__(
             model_path=state["model_path"],
             n_ctx=state["n_ctx"],
-            n_parts=state["n_parts"],
             n_gpu_layers=state["n_gpu_layers"],
             seed=state["seed"],
             f16_kv=state["f16_kv"],
@@ -1527,7 +1557,15 @@ class Llama:
             last_n_tokens_size=state["last_n_tokens_size"],
             lora_base=state["lora_base"],
             lora_path=state["lora_path"],
+            tensor_split=state["tensor_split"],
             verbose=state["verbose"],
+            ### TEMPORARY ###
+            n_gqa=state["n_gqa"],
+            rms_norm_eps=state["rms_norm_eps"],
+            ### TEMPORARY ###
+            ### DEPRECATED ###
+            n_parts=state["n_parts"],
+            ### DEPRECATED ###
         )
 
     def save_state(self) -> LlamaState:

@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.77]
+
+- (llama.cpp) Update llama.cpp add support for LLaMa 2 70B
+- (server) Add temporary n_gqa and rms_norm_eps parameters required for LLaMa 2 70B
+
+## [0.1.76]
+
+- (llama.cpp) Update llama.cpp add support for LLaMa 2 70B
+
+## [0.1.75]
+
+- Update llama.cpp
+
+## [0.1.74]
+
+### Added
+
+- (server) OpenAI style error responses
+
+## [0.1.73]
+
+### Added
+
+- (server) Add rope parameters to server settings
+
+## [0.1.72]
+
+### Added
+
+- (llama.cpp) Update llama.cpp added custom_rope for extended context lengths
+
+## [0.1.71]
+
+### Added
+
+- (llama.cpp) Update llama.cpp
+
+### Fixed
+
+- (server) Fix several pydantic v2 migration bugs
+
 ## [0.1.70]
 
 ### Fixed
