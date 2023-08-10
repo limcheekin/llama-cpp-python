@@ -1,4 +1,4 @@
-service: orca-mini-v3
+service: llama-2-7b-chat
 
 frameworkVersion: "3"
 
