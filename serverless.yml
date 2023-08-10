@@ -1,4 +1,4 @@
-service: llama-2
+service: orca-mini-v3
 
 frameworkVersion: "3"
 
