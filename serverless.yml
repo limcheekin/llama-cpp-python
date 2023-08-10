@@ -1,4 +1,4 @@
-service: orca-mini-v3
+service: orca-mini-v3-7b
 
 frameworkVersion: "3"
 
