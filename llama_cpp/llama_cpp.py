@@ -181,6 +181,7 @@ llama_progress_callback = ctypes.CFUNCTYPE(None, c_float, c_void_p)
 
 #     // Keep the booleans together to avoid misalignment during copy-by-value.
 #     bool low_vram;   // if true, reduce VRAM usage at the cost of performance
+#     bool mul_mat_q;  // if true, use experimental mul_mat_q kernels
 #     bool f16_kv;     // use fp16 for KV cache
 #     bool logits_all; // the llama_eval() call computes all logits, not just the last one
 #     bool vocab_only; // only load the vocabulary, no weights
@@ -203,6 +204,7 @@ class llama_context_params(Structure):
         ("progress_callback", llama_progress_callback),
         ("progress_callback_user_data", c_void_p),
         ("low_vram", c_bool),
+        ("mul_mat_q", c_bool),
         ("f16_kv", c_bool),
         ("logits_all", c_bool),
         ("vocab_only", c_bool),
@@ -1157,6 +1159,23 @@ _lib.llama_sample_temperature.argtypes = [
 _lib.llama_sample_temperature.restype = None
 
 
+# LLAMA_API void llama_sample_grammar(struct llama_context * ctx, llama_token_data_array * candidates, const struct llama_grammar * grammar);
+def llama_sample_grammar(
+    ctx: llama_context_p,
+    candidates,  # type: _Pointer[llama_token_data_array]
+    grammar,  # type: llama_grammar_p
+):
+    return _lib.llama_sample_grammar(ctx, candidates, grammar)
+
+
+_lib.llama_sample_grammar.argtypes = [
+    llama_context_p,
+    llama_token_data_array_p,
+    llama_grammar_p,
+]
+_lib.llama_sample_grammar.restype = None
+
+
 # @details Mirostat 1.0 algorithm described in the paper https://arxiv.org/abs/2007.14966. Uses tokens instead of words.
 # @param candidates A vector of `llama_token_data` containing the candidate tokens, their probabilities (p), and log-odds (logit) for the current position in the generated text.
 # @param tau  The target cross-entropy (or surprise) value you want to achieve for the generated text. A higher value corresponds to more surprising or less predictable text, while a lower value corresponds to less surprising or more predictable text.
@@ -1243,6 +1262,23 @@ _lib.llama_sample_token.argtypes = [
 ]
 _lib.llama_sample_token.restype = llama_token
 
+
+# /// @details Accepts the sampled token into the grammar
+# LLAMA_API void llama_grammar_accept_token(struct llama_context * ctx, struct llama_grammar * grammar, llama_token token);
+def llama_grammar_accept_token(
+    ctx: llama_context_p,
+    grammar: llama_grammar_p,
+    token: llama_token,
+) -> None:
+    _lib.llama_grammar_accept_token(ctx, grammar, token)
+
+
+_lib.llama_grammar_accept_token.argtypes = [
+    llama_context_p,
+    llama_grammar_p,
+    llama_token,
+]
+_lib.llama_grammar_accept_token.restype = None
 
 # Performance information
 
